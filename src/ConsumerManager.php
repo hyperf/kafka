@@ -9,6 +9,7 @@ declare(strict_types=1);
  * @contact  group@hyperf.io
  * @license  https://github.com/hyperf/hyperf/blob/master/LICENSE
  */
+
 namespace Hyperf\Kafka;
 
 use Hyperf\Contract\ConfigInterface;
@@ -58,7 +59,7 @@ class ConsumerManager
          */
         foreach ($classes as $class => $annotation) {
             $instance = make($class);
-            if (! $instance instanceof AbstractConsumer || ! $annotation->enable) {
+            if (!$instance instanceof AbstractConsumer || !$annotation->enable) {
                 continue;
             }
 
@@ -66,7 +67,7 @@ class ConsumerManager
             $annotation->topic && $instance->setTopic($annotation->topic);
             $annotation->groupId && $instance->setGroupId($annotation->groupId);
             $annotation->memberId && $instance->setMemberId($annotation->memberId);
-            $annotation->autoCommit && $instance->setAutoCommit($annotation->autoCommit);
+            $instance->setAutoCommit((bool)$annotation->autoCommit);
 
             $process = $this->createProcess($instance);
             $process->name = $instance->getName() . '-' . $instance->getTopic();
@@ -77,7 +78,8 @@ class ConsumerManager
 
     protected function createProcess(AbstractConsumer $consumer): AbstractProcess
     {
-        return new class($this->container, $consumer) extends AbstractProcess {
+        return new class($this->container, $consumer) extends AbstractProcess
+        {
             /**
              * @var AbstractConsumer
              */
@@ -120,7 +122,7 @@ class ConsumerManager
 
                         $result = $consumer->consume($message);
 
-                        if (! $consumerConfig->getAutoCommit()) {
+                        if (!$consumerConfig->getAutoCommit()) {
                             if ($result === Result::ACK) {
                                 $message->getConsumer()->ack($message);
                             }
