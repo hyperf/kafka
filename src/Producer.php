@@ -9,6 +9,7 @@ declare(strict_types=1);
  * @contact  group@hyperf.io
  * @license  https://github.com/hyperf/hyperf/blob/master/LICENSE
  */
+
 namespace Hyperf\Kafka;
 
 use Hyperf\Contract\ConfigInterface;
@@ -59,13 +60,13 @@ class Producer
         $ack = new Channel();
         $this->chan->push(function () use ($topic, $key, $value, $headers, $partitionIndex, $ack) {
             try {
-                if (! isset($this->topicsMeta[$topic])) {
+                if (!isset($this->topicsMeta[$topic])) {
                     $this->producer->send($topic, $value, $key, $headers);
                     $ack->close();
                     return;
                 }
 
-                if (! is_int($partitionIndex)) {
+                if (!is_int($partitionIndex)) {
                     $index = $this->getIndex($key, $value, count($this->topicsMeta[$topic]));
                     $partitionIndex = array_keys($this->topicsMeta[$topic])[$index];
                 }
@@ -136,26 +137,37 @@ class Producer
             return;
         }
         $this->chan = new Channel(1);
-        Coroutine::create(function () {
+        $ack = new Channel();
+        Coroutine::create(function () use ($ack) {
             while (true) {
-                $this->producer = $this->makeProducer();
-                $this->topicsMeta = $this->fetchMeta();
-                while (true) {
-                    $closure = $this->chan->pop();
-                    if (! $closure) {
-                        break 2;
+                try {
+                    $this->producer = $this->makeProducer();
+                    $this->topicsMeta = $this->fetchMeta();
+                    while (true) {
+                        $closure = $this->chan->pop();
+                        if (! $closure) {
+                            break 2;
+                        }
+                        try {
+                            $closure->call($this);
+                        } catch (\Throwable $e) {
+                            $this->producer->close();
+                            break;
+                        }
                     }
-                    try {
-                        $closure->call($this);
-                    } catch (\Throwable $e) {
-                        $this->producer->close();
-                        break;
-                    }
+                    $ack->close();
+                }catch (\Throwable $e){
+                    $ack->push($e);
+                    break;
                 }
             }
             /* @phpstan-ignore-next-line */
             $this->chan = null;
         });
+
+        if ($e = $ack->pop()){
+            throw $e;
+        }
     }
 
     private function makeProducer(): LongLangProducer
